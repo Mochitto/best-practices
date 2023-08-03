@@ -115,6 +115,30 @@ Chore: cleaned up imports
 Test: added tests for the stores data service
 ```
 
+
+### Git history e branches
+
+Quando si sviluppa una nuova feature o si risolve un bug, e' buona cosa creare un nuovo branch su cui lavorare.
+Esistono anche dei branches usati spesso in ogni progetto:
+- **Main (o master)**: branch che ha il codice pronto per essere mandato in production; con codice rifinito e stabile
+- **Development (o develop)**: branch che si usa durante lo sviluppo del programma, in cui si merge-ano i branch di features e fixes
+- **feat/<branch name>**: branch usato per lo sviluppo di una feature
+- **fix/<branch name>**: branch usato per lo sviluppo di un/piu' bug fix
+
+Il flow tipico potrebbe essere:
+1. Devo creare una nuova feature per gestire lo scroll su una mappa -> creo `feat/map-scroll`
+2. Ho finito di sviluppare la feature e puo' unirsi alle altre features aggiunte dalle altre persone -> aggiorno CHANGELOG, merge-o su `development` e taggo il commit con la nuova versione (minor)
+3. Rimuovo il branch `feat/map-scroll`
+4. Mi richiedono di cambiare parte della feature -> creo `fix/map-scroll`
+5. Ho finito di sviluppare il fix e puo' unirsi alle altre features aggiunte dalle altre persone -> aggiorno CHANGELOG, merge-o su `development` e taggo il commit con la nuova versione (patch)
+6. Abbiamo raggiunto abbstanza features da rilasciare una versione stabile -> apro una PR per merge-are su `main`, sistemo cio' che potrebbe essere da sistemare e taggo il commit (major o minor)
+
+!! Usare **rebase, amend, force-push etc.** solo quando si lavora su branches che si possiedono e che non sono condivisi con altre persone.
+Rebase e' una azione distruttiva che cambia l'ordine dei commits e a cui non si puo' rimediare in caso di errori.
+Rebase-are su branch condivisi porta anche il rischio di rimuovere il lavoro fatto da altre persone.
+
+In caso di errori, si puo' create un nuovo commit con ex. `Fix: fixing problems regarding previous commits`.
+
 ---
 
 ## Commenti e documentazione nel codice
@@ -221,6 +245,10 @@ class Myclass {
 }
 ```
 
+!! Nei commenti e' importante scrivere il **perche'** si e' fatta una scelta, non il **come** qualcosa funzioni: se si sente il bisogno di scrivedere come qualcosa sta funzionando, allora e' probabilmente troppo complesso.
+
+Il codice dovrebbe essere leggibile e comprensibile, almeno per quanto riguarda la logica. I commenti possono dare un contesto, in cui il codice viene applicato.
+
 ### Quando scrivere le docstrings
 Prima di fare un commit, e' utile aggiungere docstrings a parti del codice che sono "complete".
 
@@ -229,4 +257,122 @@ Se invece sto scrivendo una piccola funzione, e' utile aggiungere subito una doc
 
 ---
 
+## Refactoring e tenere il codice pulito
+
+Durante il tempo, si crea del debito tecnico dovuto alla mancanza di revisioni del codice.
+E' buon uso avere alcuni accorgimenti sia durante la scrittura che durante la revisione del codice.
+
+### Linee guida
+Queste linee guida possono aiutare a riconoscere quando bisogna revisionare il codice (refactor). Non sono sempre applicabili, ma generalmente e' buona norma seguirle.
+
+- **Le funzioni non dovrebbero essere piu' lunghe di 50 linee**; se lo sono e' probabile che serva *estrarre funzioni* (di piu' su questo in seguito)
+- **Si fa fatica a dare nomi alle variabili e funzioni**; probabilmente la architettura/logica che si sta applicando e' troppo complessa
+- **Si sente il bisogno di aggiungere commenti che spieghino cio' che succede nel codice**; probabilmente la logica e' troppo complessa e va semplificata
+- **Il file e' piu' lungo di 300 righe**; probabilmente puo' essere diviso in diversi file con moduli specifici
+- **Si fatica a navigare il file** probabilmente il file e' troppo lungo o la logica non lineare, ad esempio nel caso di una gestione dello stato fatta male
+- **Una funzione richiede piu' di tre parametri**: probabilmente puoi ridurre il numero di parametri creando piu' funzioni invece che una sola
+- **Stai provando a vedere cosa fa una funzione mettendoci cose a caso** (durante lo sviluppo, non durante reverse-engineering); probabilmente devi scrivere dei test che descrivono cio' che ti aspetti e cio' che non vuoi che succeda
+- **Stai usando type signatures generiche o literals complessi**; probabilmente devi creare delle interfacce specifiche o semplificare la logica di cio' che stai scrivendo per usare tipi piu' semplici
+- **Hai piu' di tre/quattro livelli di indentazione**; probabilmente devi *estrarre funzioni*.
+- **Hai lo stesso codice (o molto simile) in piu' di tre punti**; probabilmente e' il momento di astrarre la logica comune e creare una funzione che gestisca i vari casi (creare astrazioni quando la duplicazione e' bassa puo' invece aumentare la complessita' della applicazione)
+
+### Estrarre funzioni
+Spesso le funzioni possono essere divise in sotto-funzioni piu' specifiche. Cio' permette di ridurre la complessita' generale delle funzioni, in quanto fanno una sola cosa (e quindi sono molto leggibili e prevedibili).
+
+Esempio 
+```js
+
+// PRIMA DEL REFACTOR
+
+// operation: "3 + 4"
+function calculate(operation) {
+    let operator
+    if ("+" in operation){ operator = "+"}
+    else if ("-" in operation){ operator = "-"}
+    else if ("*" in operation){ operator = "*"}
+    else if ("/" in operation){ operator = "/"}
+
+    const operationsMap = {
+    "+": (num1, num2) => num1 + num2,
+    "-": (num1, num2) => num1 - num2,
+    "*": (num1, num2) => num1 * num2,
+    "/": (num1, num2) => num1 / num2,
+    }
+
+    const firstNumber = Number.parseInt(operation.split(+)[0].trim())
+    const secondNumber = Number.parseInt(operation.split(+)[1].trim())
+
+    return operationsMap[operator](firstNumber, secondNumber)
+}
+
+// DOPO IL REFACTOR
+function calculate(operation) {
+    const operator = extractOperator(operation)
+    const operationFunction = getOperationFunction(operator)
+    const [firstNumber, secondNumber] = extractNumbers(operation)
+    
+    return operationFunction(firstNumber, secondNumber)
+}
+```
+
+Gli steps da fare durante l'estrazione di funzioni sono:
+1. Prendi il codice e lo muovi in una funzione
+```js
+function calculate(operation) {
+    const operator = extractOperator(operation)
+
+    const operationsMap = {
+    "+": (num1, num2) => num1 + num2,
+    "-": (num1, num2) => num1 - num2,
+    "*": (num1, num2) => num1 * num2,
+    "/": (num1, num2) => num1 / num2,
+    }
+
+    const firstNumber = Number.parseInt(operation.split(+)[0].trim())
+    const secondNumber = Number.parseInt(operation.split(+)[1].trim())
+
+    return operationsMap[operator](firstNumber, secondNumber)
+}
+
+function extractOperator(operation) {
+    let operator
+    if ("+" in operation){ operator = "+"}
+    else if ("-" in operation){ operator = "-"}
+    else if ("*" in operation){ operator = "*"}
+    else if ("/" in operation){ operator = "/"}
+
+    return operator
+}
+
+
+```
+2. Migliori il codice: aggiungi docstrings, lo ripulisci e se necessario rimuovi duplicazione del codice
+```js
+/**
+* Get the algebraic operators from a string representing an operation.
+*/
+function extractOperator(operation: string) {
+    return operation.match(/[-+*\/]/)[0]
+}
+```
+3. Muovi le nuove funzioni in altri moduli, creandoli se necessario
+```js
+// component.js
+function calculate(operation) {
+    const operator = extractOperator(operation)
+    const operationFunction = getOperationFunction(operator)
+    const [firstNumber, secondNumber] = extractNumbers(operation)
+    
+    return operationFunction(firstNumber, secondNumber)
+}
+
+// handle-operations.js
+function getOperationFunction() {...}
+
+// data-extractors.js
+function extractOperator() {...}
+function extractNumbers() {...}
+```
+
+### Funzioni pure e side-effects
 
