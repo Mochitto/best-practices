@@ -4,12 +4,30 @@ Questo documento riporta alcune best practices che possono aiutare a scrivere co
 
 ---
 Indice:
-
-- 
+- git, github e versioning
+    - Semantic versioning - Semver
+    - Changelogs - keepachangelog
+    - Messaggi di commit
+    - Git history e branches
+- Commenti e documentazione nel codice
+    - Nomi
+    - Commenti
+    - Quando scrivere le docstrings
+- Refactoring e tenere il codice pulito
+    - Linee guida
+    - Estrarre funzioni
+    - Funzioni pure e side-effects
+    - Funzioni pure: pipes, composition e higher-order functions
+- Architettura
+    - Funzioni e moduli
+    - Component
+    - Services
+    - Data-services
+    - Architettura tipo
 
 ---
 
-## Git, github e versioning
+## git, github e versioning
 
 Utilizzare tags, changelog files e semantic versioning puo' aiutarci nel sapere in che momento aggiungiamo quale feature, risolviamo bugs o facciamo altre modifiche ad un progetto.
 
@@ -375,4 +393,194 @@ function extractNumbers() {...}
 ```
 
 ### Funzioni pure e side-effects
+Le funzioni possono essere di due tipi: pure e con side-effects.
+
+Una **funzione pura** ha un input e un output, non cambia variabili al di' fuori di quelle che possiede e da' sempre lo stesso risultato con lo stessso input.
+```js
+function giveMe5of(word) {
+    return Array.from({length: 5}, _ => word)
+}
+```
+Una **funzione con side-effects** e' una funzione che ha effetti al di' fuori del proprio scope:
+```js
+function handleClick(event) {
+    this.selectedItem = event.target // primo side effect: cambiare uno state della classe
+    this.clicks += 1
+    this._url.set("logging")
+    console.log(event) // secondo side effect: scrivere sulla console
+    // non ritorna nulla, void
+}
+```
+
+Le funzioni con side-effects sono difficili da debuggare: tracciare il flusso della applicazione, come nel caso dell'esempio, risulta complesso (ad esempio, seguire come cambia "this.clicks", che magari e' anche modificato da altri metodi della classe).
+Le funzioni non pure sono anche molto difficili da testare: bisogna creare un sistema "finto" che possono modificare, e bisogna analizzare come questo sistema cambia ad ogni chiamata della funzione.
+
+Le funzioni pure invece sono facilmente testabili; un input ti da' sempre lo stesso output, quindi possono essere testate, modificate e ottimizzate senza paura di cambiare il flusso della applicazione.
+
+### Funzioni pure: pipes, composition e higher-order functions
+
+Usando diverse funzioni pure si possono anche creare delle astrazioni che rendono il flusso della applicazione piu' semplice (o piu' facile da modificare e mantenere).
+
+I **pipes** sono funzioni in serie, in cui l'output di una funzione viene passato come input di quella dopo.
+Risultano molto utili in caso di serializzazione di data e deserializzazione (ad esempio quando si comunica con una API esterna).
+
+**Functions compositions** sono simili ai pipes, ma si leggono da destra a sinistra.
+
+```js
+// First step
+function addApiCode(object, code) {
+    return {...object, code}
+}
+
+// Second step
+function formatDates(object) {
+    return {
+    ...object,
+    date: format(date)
+    }
+}
+
+// Last step
+function filterOutUnefinedValues(object) {
+    const result = {}
+    for (let [key, value] of Object.entries(object)) {
+        if (value) {
+            result[key] = value
+        }
+    }
+    return result
+}
+
+// Pipe
+pipe(addApiCode, formatDates, filterOutUnefinedValues)(myObject)
+
+// Componsition
+compose(filterOutUnefinedValues, formatDates, addApiCode)(myObject)
+// Uguale a
+filterOutUnefinedValues(formatDates(addApiCode(myObject)))
+
+// Entrambi sono uguali a
+const objectWithApiCode = addApiCode(myObject)
+const objectWithApiCodeAndFormattedData = formatDates(objectWithApiCode)
+const objectWithApiCodeAndFormattedDataWithoutUndefinedValues = filterOutUnefinedValues(objectWithApiCodeAndFormattedData)
+```
+  
+`pipe` e `compose` sono **higher-order functions**: funzioni che prendono come argomenti altre funzioni. Esse sono molto utili per rendere il codice piu' dinamico e migliorare la manutenzione del progetto.  
+Anche `map`, `forEach`, `filter` etc. sono higher-order functions.
+
+```js
+function removeUndefined(item) {return item === undefined}
+
+[1,2,3,undefined].filter(removeUndefined)
+// uguale a
+[1,2,3,undefined].filter(item => item === undefined)
+```
+
+---
+
+## Architettura
+
+Alcune linee guida per l'architettura delle applicazioni Angular.
+
+!! **Nota**: con metodo si intende una funzione che fa parte di una classe.
+
+### Funzioni e moduli
+I metodi che aiutano a manipolare data (formatters, extractors etc.) o helper functions vanno parametizzati, estratti dalla classe e messi in un modulo specifico.  
+Cio' permette di avere funzioni pure facilmente testabili e riutilizzabili (in caso la loro logica sia condivisa in altre parti della applicazione).
+
+```js
+// Prima
+class MyComponent {
+    filter = {};
+    handleClick() {
+        this.filter = _formatFormData();
+    };
+
+    private _formatFormData() {
+        const data = this._form.getData();
+        return {...data, date: format(data.date)};
+    };
+};
+
+// Dopo
+import {addDateToForm} from "data-manipulation/formatters";
+
+class MyComponent {
+    filter = {};
+    handleClick() {
+        this.filter = addDateToForm(this._form)
+    };
+};
+
+// Formatters.js
+function addDateToForm(form) {
+        const data = form.getData();
+        return {...data, date: format(data.date)};
+};
+```
+
+### Component
+I components hanno metodi che servono per:
+- Lifecycle del component
+- Gestire eventi
+- Gestire subscriptions e observables
+
+Si occupano di mostrare data all'utente e di gestire i suoi inputs.
+
+### Services
+I services vengono usati per condividere data fra components e permettere ad essi di comunicare.  
+Per questa ragione, sono "provided in root", rendendo la loro data in condivisione con il resto della applicazione.  
+Per questa ragione, devono avere una funzione chiamata `reset` che permetta di "pulire" il service quando un componente non lo usa piu'.
+
+### Data-services
+I data-services sono sevices che vengono utilizzati per esporre API endpoints ai componenti. (RFC (request for comments): Questi potrebbero anche essere esposti da moduli in realta', se non avvengono ottimizzazioni da parte di Angular).
+
+### Architettura tipo
+
+
+
+```
+-src
+|    -app
+|    |    -services
+|    |    |    -data-services
+|    |    |    |    -stores
+|    |    |    |    |    -store.data-service.ts -> service
+|    |    |    |    |    -store-data-serializers.ts -> module
+|    |    |    |    |    -store-data-deserializers.ts -> module
+|    |    |    |    |    -store.data-service.spec.ts -> service test
+|    |    |    -services
+|    |    |    |    -store-filter
+|    |    |    |    |    -store-filter.service.ts -> service
+|    |    |    |    |    -store-filter-formatter.ts -> module
+|    |    |    |    |    -store-filter.spec.ts -> service test
+|    |    -components
+|    |    |    -store
+|    |    |    |    -store.component.ts -> component
+|    |    |    |    -store.component.html -> template
+|    |    |    |    -store.component.spec.ts -> component test
+|    |    |    |    -store-utils.ts -> module
+|    |    -tests
+|    |    |    -unit-tests
+|    |    |    |    -services
+|    |    |    |    |    -data-services
+|    |    |    |    |    |    -stores
+|    |    |    |    |    |    |    -store-data-serializers.spec.ts -> module tests
+|    |    |    |    |    |    |    -store-data-deserializers.spec.ts -> module tests
+|    |    |    |    |    -services
+|    |    |    |    |    |    -store-filter
+|    |    |    |    |    |    |    -store-filter-formatter.spec.ts -> module tests
+|    |    |    |    -components
+|    |    |    |    |    -store
+|    |    |    |    |    |    -store-utils.spec.ts -> module tests
+|    |    |    |    -utils
+|    |    |    |    |    -data-structures.spec.ts -> module tests
+|    |    |    -integration-tests
+|    |    |    |    ...
+|    |    -utils
+|    |    |    -data-structures.ts -> module
+```
+
+
+
 
