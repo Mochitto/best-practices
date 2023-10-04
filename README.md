@@ -1,5 +1,9 @@
 # RT Best practices
 
+## IMPORTANT
+This document has to be updated to follow new best practices.
+
+
 Questo documento riporta alcune best practices che possono aiutare a scrivere codice semplice da leggere e modificare in futuro.
 
 ---
